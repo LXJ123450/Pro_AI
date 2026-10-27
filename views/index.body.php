@@ -6,9 +6,37 @@
                     <option value="">加载中...</option>
                 </select>
             </div>
+            <button type="button" id="btn-ai-config" class="btn btn-small btn-ghost" title="配置当前 AI 服务的密钥与模型">⚙ 配置</button>
             <div class="ai-status">
                 <span class="indicator"></span>
                 <span id="ai-status-text">连接中...</span>
+            </div>
+        </div>
+
+        <!-- AI服务配置面板 -->
+        <div id="ai-config-panel" class="config-panel" hidden>
+            <div class="config-panel-head">
+                <h3 id="config-title">配置 AI 服务</h3>
+                <button type="button" id="config-close" class="config-close" aria-label="关闭">×</button>
+            </div>
+            <p id="config-desc" class="config-desc"></p>
+            <div class="form-group">
+                <label for="config-base-url">接口地址（Base URL）</label>
+                <input type="url" id="config-base-url" placeholder="https://api.example.com/v1">
+            </div>
+            <div class="form-group">
+                <label for="config-model">默认模型</label>
+                <input type="text" id="config-model" placeholder="例如 gpt-4o">
+            </div>
+            <div class="form-group">
+                <label for="config-api-key">API Key</label>
+                <input type="password" id="config-api-key" placeholder="留空表示不修改已保存的 Key" autocomplete="off">
+                <small id="config-key-hint" class="config-hint"></small>
+            </div>
+            <div class="config-actions">
+                <button type="button" id="config-save" class="btn btn-primary">保存配置</button>
+                <button type="button" id="config-clear-key" class="btn btn-ghost">清除 Key</button>
+                <span id="config-message" class="config-message"></span>
             </div>
         </div>
 
@@ -103,6 +131,7 @@
                     </div>
                     <button type="submit" class="btn btn-primary">开始创作</button>
                 </form>
+                <p class="form-hint">若提示额度受限，请点击右上角「⚙ 配置」，切换到智谱 GLM 或硅基流动的免费模型（需免费注册，页面内附地址）。</p>
                 <div class="loading" id="novel-loading">
                     <div class="spinner"></div>
                     <p>正在分阶段创作（大纲 → 分章 → 梗概），请稍候...</p>
@@ -135,6 +164,9 @@
                     </div>
                     <button type="submit" class="btn btn-primary">生成视频</button>
                 </form>
+                <p class="form-hint">视频生成使用智谱 CogVideoX-Flash 免费模型。首次使用请到
+                    <a href="https://open.bigmodel.cn/" target="_blank" rel="noopener noreferrer">open.bigmodel.cn</a>
+                    免费注册获取 API Key，然后点击右上角「⚙ 配置」填写。</p>
                 <div class="loading" id="video-loading">
                     <div class="spinner"></div>
                     <p>正在提交任务，结果生成后会自动展示...</p>

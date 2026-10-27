@@ -13,6 +13,7 @@ $config = require __DIR__ . '/config.php';
 
 require __DIR__ . '/src/http.php';
 require __DIR__ . '/src/config.php';
+require __DIR__ . '/src/config_writer.php';
 require __DIR__ . '/src/security.php';
 require __DIR__ . '/src/ai.php';
 require __DIR__ . '/src/providers/factory.php';

@@ -19,6 +19,7 @@ function extractVideoUrlFromResponse(array $data): string {
     $candidates = [
         $data['video_url'] ?? null,
         $data['data'][0]['url'] ?? null,
+        $data['video_result'][0]['url'] ?? null,
         $data['output']['video_url'] ?? null,
         $data['result']['video_url'] ?? null,
         $data['url'] ?? null,
@@ -57,6 +58,7 @@ function extractRemoteStatusFromResponse(array $data): string {
     $candidates = [
         $data['status'] ?? null,
         $data['state'] ?? null,
+        $data['task_status'] ?? null,
         $data['data']['status'] ?? null,
         $data['output']['status'] ?? null,
     ];
@@ -68,12 +70,36 @@ function extractRemoteStatusFromResponse(array $data): string {
     return '';
 }
 
+/**
+ * 解析视频接口密钥：video_api.api_key 为空时回退到 ai_services.zhipu.api_key
+ */
+function resolveVideoApiKey(array $videoConfig): string {
+    global $config;
+
+    $apiKey = trim((string)($videoConfig['api_key'] ?? ''));
+    if ($apiKey === '' && ($videoConfig['service'] ?? '') === 'zhipu') {
+        $apiKey = trim((string)($config['ai_services']['zhipu']['api_key'] ?? ''));
+    }
+    return $apiKey;
+}
+
 function handleGenerateVideo(): void {
     global $config;
 
     $videoConfig = $config['video_api'];
-    if (empty($videoConfig['enabled']) || empty($videoConfig['api_key'])) {
+    if (empty($videoConfig['enabled'])) {
         jsonResponse(['success' => false, 'error' => '视频生成功能未配置，请在config.php中启用并配置video_api'], 400);
+    }
+    $service = (string)($videoConfig['service'] ?? 'custom');
+    $apiKey = resolveVideoApiKey($videoConfig);
+    if ($service === 'zhipu' && $apiKey === '') {
+        jsonResponse([
+            'success' => false,
+            'error' => '视频生成需要智谱 API Key（免费注册：https://open.bigmodel.cn/ ）。请点击页面右上角「⚙ 配置」，选择「智谱 GLM（免费模型）」并填写 Key。',
+        ], 400);
+    }
+    if ($service !== 'zhipu' && empty($videoConfig['api_key'])) {
+        jsonResponse(['success' => false, 'error' => '视频生成功能未配置，请在config.php中配置video_api.api_key'], 400);
     }
     if (empty($videoConfig['api_url'])) {
         jsonResponse(['success' => false, 'error' => '视频生成API地址未配置（video_api.api_url）'], 400);
@@ -91,17 +117,33 @@ function handleGenerateVideo(): void {
         }
     }
 
+    // 智谱 CogVideoX 需要 model / size / fps，其他自定义接口仅传 prompt
+    if ($service === 'zhipu') {
+        $payload = [
+            'model' => (string)($videoConfig['model'] ?? 'cogvideox-flash'),
+            'prompt' => $prompt,
+        ];
+        if (!empty($videoConfig['size'])) {
+            $payload['size'] = (string)$videoConfig['size'];
+        }
+        if (!empty($videoConfig['fps'])) {
+            $payload['fps'] = (int)$videoConfig['fps'];
+        }
+    } else {
+        $payload = ['prompt' => $prompt];
+    }
+
     $ch = curl_init();
     curl_setopt_array($ch, [
         CURLOPT_URL => $videoConfig['api_url'],
         CURLOPT_POST => true,
-        CURLOPT_POSTFIELDS => json_encode(['prompt' => $prompt]),
+        CURLOPT_POSTFIELDS => json_encode($payload),
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_CONNECTTIMEOUT => 10,
         CURLOPT_TIMEOUT => 60,
         CURLOPT_HTTPHEADER => [
             'Content-Type: application/json',
-            'Authorization: Bearer ' . $videoConfig['api_key'],
+            'Authorization: Bearer ' . $apiKey,
         ],
     ]);
     $response = curl_exec($ch);
@@ -117,6 +159,10 @@ function handleGenerateVideo(): void {
     }
     if ($httpCode !== 200) {
         $message = '视频生成API返回错误: HTTP ' . $httpCode . ' - ' . mb_substr((string)$response, 0, 300);
+        if (in_array($httpCode, [401, 403], true)) {
+            $message = '视频生成API鉴权失败（HTTP ' . $httpCode . '）。请点击「⚙ 配置」检查智谱 API Key 是否正确；免费注册：https://open.bigmodel.cn/ 。上游信息：'
+                . mb_substr((string)$response, 0, 200);
+        }
         if ($store !== null) {
             $store->updateTask($taskId, ['status' => 'failed', 'error' => mb_substr($message, 0, 500)]);
         }

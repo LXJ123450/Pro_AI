@@ -12,10 +12,33 @@ function handleGenerateImage(): void {
     global $config;
 
     $imageConfig = $config['image_api'];
-    if (!$imageConfig['enabled'] || empty($imageConfig['api_key'])) {
-        jsonResponse(['success' => false, 'error' => '图片生成功能未配置，请在config.php中启用并配置image_api'], 400);
+    if (empty($imageConfig['enabled'])) {
+        jsonResponse(['success' => false, 'error' => '图片生成功能未配置，请在config.php中启用image_api'], 400);
     }
     $prompt = requireText('prompt', '图片描述', 2000);
+
+    // Pollinations：免注册，GET 地址直接返回图片，仅需构造 URL 交给前端加载
+    if (($imageConfig['service'] ?? '') === 'pollinations') {
+        $template = (string)($imageConfig['api_url'] ?? '');
+        if ($template === '') {
+            jsonResponse(['success' => false, 'error' => '图片生成功能未配置 api_url'], 400);
+        }
+        $parts = explode('x', strtolower((string)($imageConfig['default_size'] ?? '1024x1024')));
+        $width = isset($parts[0]) ? max(64, (int)$parts[0]) : 1024;
+        $height = isset($parts[1]) ? max(64, (int)$parts[1]) : 1024;
+        $url = str_replace('{prompt}', rawurlencode($prompt), $template);
+        $url .= (strpos($url, '?') === false ? '?' : '&') . http_build_query([
+            'width' => $width,
+            'height' => $height,
+            'nologo' => 'true',
+            'seed' => mt_rand(1, 1000000),
+        ]);
+        jsonResponse(['success' => true, 'image_url' => $url]);
+    }
+
+    if (empty($imageConfig['api_key'])) {
+        jsonResponse(['success' => false, 'error' => '图片生成功能未配置，请在config.php中配置image_api密钥'], 400);
+    }
 
     $ch = curl_init();
     curl_setopt_array($ch, [

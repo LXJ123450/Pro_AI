@@ -39,9 +39,14 @@ abstract class Provider {
     }
 
     /**
-     * 服务是否已配置可用（本地 Ollama 无需密钥）
+     * 服务是否已配置可用
+     *
+     * requires_key=false 的服务（本地 Ollama、免注册在线服务）无需密钥。
      */
     public function isConfigured(): bool {
+        if (array_key_exists('requires_key', $this->serviceConfig)) {
+            return !$this->serviceConfig['requires_key'] || !empty($this->serviceConfig['api_key']);
+        }
         return $this->key === 'ollama' || !empty($this->serviceConfig['api_key']);
     }
 

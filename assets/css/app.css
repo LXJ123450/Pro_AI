@@ -533,3 +533,94 @@
                 width: 100%;
             }
         }
+
+        /* AI 服务配置 */
+        .btn-small {
+            padding: 10px 16px;
+            font-size: 0.9rem;
+        }
+
+        .btn-ghost {
+            background: rgba(255, 255, 255, 0.95);
+            color: var(--text-primary);
+            border: 2px solid rgba(0, 0, 0, 0.12);
+        }
+
+        .btn-ghost:hover {
+            border-color: var(--primary-color);
+            color: var(--primary-color);
+        }
+
+        #btn-ai-config {
+            margin-left: 12px;
+            width: auto;
+        }
+
+        .config-panel {
+            background: rgba(255, 255, 255, 0.98);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-xl);
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+
+        .config-panel[hidden] {
+            display: none;
+        }
+
+        .config-panel-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .config-panel-head h3 {
+            font-size: 1.15rem;
+        }
+
+        .config-close {
+            border: none;
+            background: transparent;
+            font-size: 1.6rem;
+            line-height: 1;
+            cursor: pointer;
+            color: var(--text-secondary);
+        }
+
+        .config-desc,
+        .form-hint {
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            line-height: 1.6;
+        }
+
+        .form-hint {
+            margin-top: 12px;
+        }
+
+        .config-hint {
+            display: block;
+            margin-top: 8px;
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+        }
+
+        .config-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .config-message {
+            font-size: 0.875rem;
+        }
+
+        .config-message.error {
+            color: #b91c1c;
+        }
+
+        .config-message.success {
+            color: #047857;
+        }

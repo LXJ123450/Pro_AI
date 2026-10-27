@@ -126,6 +126,16 @@ function parseChatResult(array $result, string $serviceName): array {
             'http_code' => 502,
         ];
     }
+    if ((int)$result['http_code'] === 402) {
+        $preview = mb_substr(trim($result['response']), 0, 300);
+        return [
+            'success' => false,
+            'content' => '',
+            'error' => "{$serviceName} 额度或频率受限（HTTP 402）。请稍后重试、切换到本地模型，或在 config.php 中配置该服务的 API 密钥。"
+                . ($preview !== '' ? ' 上游信息: ' . $preview : ''),
+            'http_code' => 402,
+        ];
+    }
     if ((int)$result['http_code'] !== 200) {
         $preview = mb_substr(trim($result['response']), 0, 300);
         return [

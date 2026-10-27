@@ -53,7 +53,9 @@
         }
 
         // 加载AI服务列表
-        async function loadAIServices() {
+        let aiServicesCache = [];
+
+        async function loadAIServices(preserveSelection) {
             let result;
             try {
                 result = await apiPost({ action: 'get_ai_services' });
@@ -69,6 +71,7 @@
             }
             const select = document.getElementById('ai-select');
             select.innerHTML = '';
+            aiServicesCache = result.services;
 
             result.services.forEach(service => {
                 const option = document.createElement('option');
@@ -80,27 +83,23 @@
                 select.appendChild(option);
             });
 
-            // 设置默认选中
-            select.value = result.default_ai;
-            currentAIService = result.default_ai;
+            // 保留当前选择，否则使用默认服务
+            const keep = preserveSelection && result.services.some(service => service.key === currentAIService);
+            const preferred = keep ? currentAIService : result.default_ai;
+            select.value = preferred;
+            currentAIService = preferred;
 
             // 更新状态文本
-            updateAIStatus(result.services);
-
-            // 添加事件监听
-            select.addEventListener('change', (e) => {
-                currentAIService = e.target.value;
-                updateAIStatus(result.services);
-                // 重置聊天消息
-                resetChat();
-            });
+            updateAIStatus();
         }
 
-        function updateAIStatus(services) {
-            const service = services.find(s => s.key === currentAIService);
+        function updateAIStatus() {
+            const service = aiServicesCache.find(s => s.key === currentAIService);
             const statusText = document.getElementById('ai-status-text');
             if (service) {
-                statusText.textContent = service.configured ? `${service.name} 已连接` : `${service.name} 未配置`;
+                statusText.textContent = service.configured
+                    ? `${service.name} 已连接`
+                    : `${service.name} 未配置（点击「⚙ 配置」填写）`;
             }
         }
 
@@ -149,6 +148,83 @@
         // 初始化
         loadAIServices();
         checkConfig();
+
+        document.getElementById('ai-select').addEventListener('change', (e) => {
+            currentAIService = e.target.value;
+            updateAIStatus();
+            resetChat();
+            closeConfigPanel();
+        });
+
+        // AI 服务配置面板
+        const configPanel = document.getElementById('ai-config-panel');
+        const configMessage = document.getElementById('config-message');
+
+        function setConfigMessage(text, type) {
+            configMessage.textContent = text || '';
+            configMessage.className = 'config-message' + (type ? ' ' + type : '');
+        }
+
+        function closeConfigPanel() {
+            configPanel.hidden = true;
+            setConfigMessage('', '');
+        }
+
+        async function openConfigPanel() {
+            if (!currentAIService) return;
+            configPanel.hidden = false;
+            setConfigMessage('', '');
+            document.getElementById('config-api-key').value = '';
+            try {
+                const data = await apiPost({ action: 'get_ai_service_config', ai_service: currentAIService });
+                const service = data.service;
+                document.getElementById('config-title').textContent = `配置：${service.name}`;
+                document.getElementById('config-desc').textContent = service.description || '';
+                document.getElementById('config-base-url').value = service.api_base_url || '';
+                document.getElementById('config-model').value = service.default_model || '';
+                document.getElementById('config-key-hint').textContent = service.has_key
+                    ? `已保存 Key（${service.key_hint}），留空即可保持不变`
+                    : (service.requires_key ? '尚未填写 Key，填写后保存' : '该服务无需 Key');
+            } catch (error) {
+                setConfigMessage(error.message, 'error');
+            }
+        }
+
+        async function saveServiceConfig(clearKey) {
+            if (!currentAIService) return;
+            const saveButton = document.getElementById('config-save');
+            saveButton.disabled = true;
+            try {
+                const data = await apiPost({
+                    action: 'save_ai_service_config',
+                    ai_service: currentAIService,
+                    api_base_url: document.getElementById('config-base-url').value.trim(),
+                    default_model: document.getElementById('config-model').value.trim(),
+                    api_key: clearKey ? '' : document.getElementById('config-api-key').value,
+                    clear_key: clearKey ? '1' : '0'
+                });
+                document.getElementById('config-api-key').value = '';
+                document.getElementById('config-key-hint').textContent = data.service.has_key
+                    ? `已保存 Key（${data.service.key_hint}），留空即可保持不变`
+                    : '尚未填写 Key';
+                setConfigMessage(data.message || '配置已保存', 'success');
+                await loadAIServices(true);
+                updateAIStatus();
+            } catch (error) {
+                setConfigMessage(error.message, 'error');
+            } finally {
+                saveButton.disabled = false;
+            }
+        }
+
+        document.getElementById('btn-ai-config').addEventListener('click', openConfigPanel);
+        document.getElementById('config-close').addEventListener('click', closeConfigPanel);
+        document.getElementById('config-save').addEventListener('click', () => saveServiceConfig(false));
+        document.getElementById('config-clear-key').addEventListener('click', () => {
+            if (window.confirm('确定清除该服务已保存的 API Key？')) {
+                saveServiceConfig(true);
+            }
+        });
 
         // 聊天功能
         let chatMessages = [{ role: 'assistant', content: WELCOME_MESSAGE }];
@@ -234,6 +310,71 @@
             }
             if (streamError !== '') throw new Error(streamError);
             if (!finished && content === '') throw new Error('流式响应中断，请重试');
+            return content;
+        }
+
+        // 小说分阶段流式生成：持续接收增量，避免长文本请求超时
+        async function streamNovelStage(payload, onProgress) {
+            const params = new URLSearchParams();
+            Object.keys(payload).forEach(key => params.append(key, payload[key]));
+            params.append('action', 'generate_novel_stream');
+            params.append('csrf_token', CSRF_TOKEN);
+
+            const response = await fetch('', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: params.toString()
+            });
+            const contentType = response.headers.get('Content-Type') || '';
+            if (!response.ok || !contentType.includes('text/event-stream')) {
+                let message = `请求失败 (HTTP ${response.status})`;
+                try {
+                    const errorPayload = await response.json();
+                    if (errorPayload && errorPayload.error) message = errorPayload.error;
+                } catch (error) {
+                    // 非 JSON 响应，保留默认错误信息
+                }
+                throw new Error(message);
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            let content = '';
+            let finished = false;
+            let streamError = '';
+
+            while (true) {
+                const chunk = await reader.read();
+                if (chunk.done) break;
+                buffer += decoder.decode(chunk.value, { stream: true });
+                let boundary;
+                while ((boundary = buffer.indexOf('\n\n')) !== -1) {
+                    const raw = buffer.slice(0, boundary).trim();
+                    buffer = buffer.slice(boundary + 2);
+                    if (!raw.startsWith('data:')) continue;
+                    let event;
+                    try {
+                        event = JSON.parse(raw.slice(5).trim());
+                    } catch (error) {
+                        continue;
+                    }
+                    if (event.type === 'delta' && typeof event.delta === 'string') {
+                        content += event.delta;
+                        if (typeof onProgress === 'function') onProgress(content);
+                    } else if (event.type === 'done') {
+                        finished = true;
+                        if (typeof event.content === 'string' && event.content !== '') {
+                            content = event.content;
+                        }
+                    } else if (event.type === 'error') {
+                        streamError = event.error || '生成失败';
+                    }
+                }
+            }
+
+            if (streamError !== '') throw new Error(streamError);
+            if (!finished && content === '') throw new Error('生成中断，请重试');
             return content;
         }
 
@@ -354,29 +495,97 @@
             const prompt = document.getElementById('novel-prompt').value.trim();
             const title = document.getElementById('novel-title').value.trim();
             const genre = document.getElementById('novel-genre').value;
-            const chapters = document.getElementById('novel-chapters').value;
+            const chapterCount = Number(document.getElementById('novel-chapters').value);
 
             const loading = document.getElementById('novel-loading');
+            const loadingText = loading.querySelector('p');
             const result = document.getElementById('novel-result');
 
             loading.classList.add('active');
+            loadingText.textContent = '正在生成世界观与分章大纲...';
             result.style.display = 'none';
 
+            const stages = [];
+            let lastNovelRequestAt = 0;
+            // Pollinations 免注册接口限制每 30 秒 1 次，阶段之间主动等待
+            const throttlePollinations = async () => {
+                if (currentAIService !== 'pollinations') return;
+                const remainMs = 31000 - (Date.now() - lastNovelRequestAt);
+                if (remainMs <= 1000) return;
+                for (let seconds = Math.ceil(remainMs / 1000); seconds > 0; seconds--) {
+                    loadingText.textContent = `免注册接口每 30 秒仅 1 次，${seconds} 秒后继续...`;
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                }
+            };
             try {
-                const data = await apiPost({
-                    action: 'generate_novel_pipeline',
+                lastNovelRequestAt = Date.now();
+                const outlineContent = await streamNovelStage({
+                    stage: 'outline',
                     prompt,
                     title,
                     genre,
-                    chapters,
+                    chapters: chapterCount,
                     ai_service: currentAIService
+                }, text => {
+                    loadingText.textContent = `正在生成世界观与大纲...（已生成 ${text.length} 字）`;
                 });
-                renderNovelStages(result, data.title, data.stages);
+                stages.push({ label: '世界观与大纲', content: outlineContent });
+
+                let previous = '';
+                for (let index = 1; index <= chapterCount; index++) {
+                    await throttlePollinations();
+                    loadingText.textContent = `正在创作第 ${index} / ${chapterCount} 章...`;
+                    lastNovelRequestAt = Date.now();
+                    const chapterContent = await streamNovelStage({
+                        stage: 'chapter',
+                        prompt,
+                        title,
+                        genre,
+                        chapters: chapterCount,
+                        index,
+                        outline: outlineContent,
+                        previous,
+                        ai_service: currentAIService
+                    }, text => {
+                        loadingText.textContent = `正在创作第 ${index} / ${chapterCount} 章...（已生成 ${text.length} 字）`;
+                    });
+                    stages.push({ label: `第 ${index} 章`, content: chapterContent });
+                    previous = chapterContent;
+                }
+
+                await throttlePollinations();
+                loadingText.textContent = '正在生成梗概与标题建议...';
+                const excerpt = stages
+                    .filter(stage => stage.label !== '世界观与大纲')
+                    .map(stage => stage.content)
+                    .join('\n\n')
+                    .slice(-3000);
+                try {
+                    lastNovelRequestAt = Date.now();
+                    const summaryContent = await streamNovelStage({
+                        stage: 'summary',
+                        prompt,
+                        title,
+                        genre,
+                        chapters: chapterCount,
+                        outline: outlineContent,
+                        excerpt,
+                        ai_service: currentAIService
+                    }, text => {
+                        loadingText.textContent = `正在生成梗概与标题建议...（已生成 ${text.length} 字）`;
+                    });
+                    stages.push({ label: '梗概与标题建议', content: summaryContent });
+                } catch (summaryError) {
+                    // 梗概失败不影响已生成的大纲与正文
+                }
+
+                renderNovelStages(result, title, stages);
             } catch (error) {
                 renderErrorResult(result, error.message);
             } finally {
                 sending.novel = false;
                 loading.classList.remove('active');
+                loadingText.textContent = '正在分阶段创作（大纲 → 分章 → 梗概），请稍候...';
             }
         });
 

@@ -13,8 +13,10 @@ require_once __DIR__ . '/status.php';
 require_once __DIR__ . '/chat.php';
 require_once __DIR__ . '/chat_stream.php';
 require_once __DIR__ . '/conversation.php';
+require_once __DIR__ . '/config_edit.php';
 require_once __DIR__ . '/novel.php';
 require_once __DIR__ . '/novel_pipeline.php';
+require_once __DIR__ . '/novel_stream.php';
 require_once __DIR__ . '/image.php';
 require_once __DIR__ . '/video.php';
 require_once __DIR__ . '/video_task.php';
@@ -25,12 +27,15 @@ require_once __DIR__ . '/video_task.php';
 function getActionHandlers(): array {
     return [
         'get_ai_services' => 'handleGetAiServices',
+        'get_ai_service_config' => 'handleGetAiServiceConfig',
+        'save_ai_service_config' => 'handleSaveAiServiceConfig',
         'check_config' => 'handleCheckConfig',
         'chat' => 'handleChat',
         'chat_stream' => 'handleChatStream',
         'get_conversation' => 'handleGetConversation',
         'generate_novel' => 'handleGenerateNovel',
-        'generate_novel_pipeline' => 'handleGenerateNovelPipeline',
+        'generate_novel_stage' => 'handleGenerateNovelStage',
+        'generate_novel_stream' => 'handleGenerateNovelStream',
         'generate_image' => 'handleGenerateImage',
         'generate_video' => 'handleGenerateVideo',
         'get_video_task' => 'handleGetVideoTask',

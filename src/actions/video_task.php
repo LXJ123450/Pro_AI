@@ -31,8 +31,9 @@ function handleGetVideoTask(): void {
     if (in_array($status, ['pending', 'processing'], true) && $remoteTaskId !== '' && $statusUrl !== '') {
         $url = str_replace('{task_id}', rawurlencode($remoteTaskId), $statusUrl);
         $headers = ['Accept: application/json'];
-        if (!empty($config['video_api']['api_key'])) {
-            $headers[] = 'Authorization: Bearer ' . $config['video_api']['api_key'];
+        $apiKey = resolveVideoApiKey($config['video_api'] ?? []);
+        if ($apiKey !== '') {
+            $headers[] = 'Authorization: Bearer ' . $apiKey;
         }
         $ch = curl_init();
         curl_setopt_array($ch, [
@@ -55,7 +56,7 @@ function handleGetVideoTask(): void {
                 $remoteStatus = extractRemoteStatusFromResponse($data);
                 if ($videoUrl !== '') {
                     $store->updateTask($taskId, ['status' => 'completed', 'video_url' => $videoUrl]);
-                } elseif (in_array($remoteStatus, ['failed', 'error', 'cancelled', 'canceled'], true)) {
+                } elseif (in_array($remoteStatus, ['failed', 'error', 'fail', 'cancelled', 'canceled'], true)) {
                     $message = (string)($data['error']['message'] ?? $data['message'] ?? $data['error'] ?? '视频生成失败');
                     $store->updateTask($taskId, ['status' => 'failed', 'error' => mb_substr($message, 0, 500)]);
                 } else {
