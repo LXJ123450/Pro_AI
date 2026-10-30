@@ -819,6 +819,123 @@
             overflow-y: auto;
         }
 
+        /* 图片提示词库（姿势 / 服装） */
+        .preset-toolbar {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+        }
+
+        .preset-search {
+            flex: 1;
+            min-width: 180px;
+            padding: 8px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-size: 0.9rem;
+        }
+
+        .preset-toolbar select,
+        .preset-actions select,
+        .novel-mode-select {
+            padding: 8px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-size: 0.9rem;
+        }
+
+        .preset-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        .preset-selected {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+        }
+
+        .preset-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 8px 5px 10px;
+            border-radius: 999px;
+            background: var(--bg-primary);
+            border: 1px solid var(--primary-color);
+            color: var(--text-primary);
+            font-size: 0.85rem;
+        }
+
+        .preset-chip-remove {
+            border: none;
+            background: transparent;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 1rem;
+            line-height: 1;
+            padding: 0 2px;
+        }
+
+        .preset-chip-remove:hover {
+            color: var(--primary-color);
+        }
+
+        .preset-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 8px;
+            max-height: 320px;
+            overflow-y: auto;
+            padding-bottom: 14px;
+        }
+
+        .preset-item {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            text-align: left;
+            padding: 10px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            cursor: pointer;
+            font: inherit;
+        }
+
+        .preset-item:hover {
+            border-color: var(--primary-color);
+        }
+
+        .preset-item.active {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 1px var(--primary-color) inset;
+        }
+
+        .preset-item-name {
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .preset-item-meta {
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+            line-height: 1.5;
+            word-break: break-word;
+        }
+
         /* 结果图片卡片与微调面板 */
         .result-container .image-card {
             white-space: normal;

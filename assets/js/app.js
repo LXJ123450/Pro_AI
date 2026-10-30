@@ -2,6 +2,8 @@
         const WELCOME_MESSAGE = '👋 你好！我是你的AI助手，有什么可以帮助你的吗？';
         let currentAIService = '';
         const sending = { chat: false, novel: false, image: false, video: false, parse: false };
+        // 图片生成：姿势 / 服装提示词库当前选择（由选择面板维护，提交时带给后端）
+        const imagePresetSelection = { pose: null, costume: null };
         // 本地 AI 服务：Ollama（对话）、ComfyUI（图片）
         let localServiceKeys = [];
         let localStatus = { ollama: null, comfyui: null };
@@ -613,17 +615,24 @@
         document.getElementById('novel-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             if (sending.novel) return;
-            sending.novel = true;
 
             const prompt = document.getElementById('novel-prompt').value.trim();
             const title = document.getElementById('novel-title').value.trim();
             const genre = document.getElementById('novel-genre').value;
             const chapterCount = Number(document.getElementById('novel-chapters').value);
+            const reference = document.getElementById('novel-reference').value.trim();
+            const referenceMode = document.getElementById('novel-reference-mode').value;
 
             const loading = document.getElementById('novel-loading');
             const loadingText = loading.querySelector('p');
             const result = document.getElementById('novel-result');
 
+            if (!prompt && !reference) {
+                renderErrorResult(result, '请输入创作要求，或上传一段参考文本');
+                return;
+            }
+
+            sending.novel = true;
             loading.classList.add('active');
             loadingText.textContent = '正在生成世界观与分章大纲...';
             result.style.display = 'none';
@@ -648,6 +657,8 @@
                     title,
                     genre,
                     chapters: chapterCount,
+                    reference,
+                    reference_mode: referenceMode,
                     ai_service: currentAIService
                 }, text => {
                     loadingText.textContent = `正在生成世界观与大纲...（已生成 ${text.length} 字）`;
@@ -668,6 +679,8 @@
                         index,
                         outline: outlineContent,
                         previous,
+                        reference,
+                        reference_mode: referenceMode,
                         ai_service: currentAIService
                     }, text => {
                         loadingText.textContent = `正在创作第 ${index} / ${chapterCount} 章...（已生成 ${text.length} 字）`;
@@ -858,15 +871,22 @@
         document.getElementById('image-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             if (sending.image) return;
-            sending.image = true;
 
             const prompt = document.getElementById('image-prompt').value.trim();
             const loraName = loraSelect ? loraSelect.value : '';
             const loraWeight = loraWeightInput ? loraWeightInput.value : '';
+            const angleValue = document.getElementById('preset-angle') ? document.getElementById('preset-angle').value : '';
+            const aspectValue = document.getElementById('image-aspect') ? document.getElementById('image-aspect').value : '';
             const loading = document.getElementById('image-loading');
             const loadingText = loading.querySelector('p');
             const result = document.getElementById('image-result');
 
+            if (!prompt && !imagePresetSelection.pose && !imagePresetSelection.costume) {
+                renderErrorResult(result, '请输入图片描述，或先选择姿势 / 服装');
+                return;
+            }
+
+            sending.image = true;
             loading.classList.add('active');
             loadingText.textContent = '正在提交任务...';
             result.replaceChildren();
@@ -878,6 +898,14 @@
                     payload.lora = loraName;
                     payload.lora_weight = loraWeight;
                 }
+                if (imagePresetSelection.pose) {
+                    payload.pose_id = imagePresetSelection.pose.id;
+                    if (angleValue) payload.pose_angle = angleValue;
+                }
+                if (imagePresetSelection.costume) {
+                    payload.costume_id = imagePresetSelection.costume.id;
+                }
+                if (aspectValue) payload.aspect = aspectValue;
                 const data = await apiPost(payload);
                 let imageUrl = data.image_url || '';
                 if (!imageUrl && data.task_id) {
@@ -995,9 +1023,172 @@
             });
         }
 
+        // 小说参考文本：支持上传 .txt/.md，读取后填入文本框（最多 6000 字）
+        function bindNovelReference() {
+            const input = document.getElementById('novel-reference-file');
+            const textarea = document.getElementById('novel-reference');
+            const message = document.getElementById('novel-reference-message');
+            if (!input || !textarea || !message) return;
+
+            input.addEventListener('change', () => {
+                const file = input.files && input.files[0];
+                if (!file) return;
+                message.className = 'config-message';
+                if (file.size > 200 * 1024) {
+                    message.className = 'config-message error';
+                    message.textContent = '文件过大（最多 200KB），请直接粘贴文字';
+                    input.value = '';
+                    return;
+                }
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const text = String(reader.result || '').slice(0, 6000);
+                    textarea.value = text;
+                    message.className = 'config-message success';
+                    message.textContent = `已读取：${file.name}（${text.length} 字）`;
+                };
+                reader.onerror = () => {
+                    message.className = 'config-message error';
+                    message.textContent = '读取失败，请直接粘贴文字';
+                };
+                reader.readAsText(file, 'UTF-8');
+            });
+        }
+
+        // 图片提示词库：检索姿势 / 服装，单选后由后端合成英文 tag
+        function bindImagePresets() {
+            const panel = document.getElementById('image-preset-panel');
+            if (!panel) return;
+            const searchInput = document.getElementById('preset-search');
+            const typeSelect = document.getElementById('preset-type');
+            const categorySelect = document.getElementById('preset-category');
+            const angleSelect = document.getElementById('preset-angle');
+            const list = document.getElementById('preset-list');
+            const selectedBox = document.getElementById('preset-selected');
+            const message = document.getElementById('preset-message');
+            const angleNames = { front: '正面', diag: '斜侧', side: '侧面', high: '俯视', low: '仰视' };
+            const labels = { pose: '姿势', costume: '服装' };
+            let lastItems = [];
+            let categoriesLoaded = false;
+            let timer = null;
+
+            const setMessage = (text, state) => {
+                message.className = 'config-message' + (state ? ' ' + state : '');
+                message.textContent = text;
+            };
+
+            const renderSelected = () => {
+                selectedBox.replaceChildren();
+                let count = 0;
+                ['pose', 'costume'].forEach(key => {
+                    const item = imagePresetSelection[key];
+                    if (!item) return;
+                    count++;
+                    const chip = document.createElement('span');
+                    chip.className = 'preset-chip';
+                    const text = document.createElement('span');
+                    const angle = (key === 'pose' && angleSelect) ? angleNames[angleSelect.value] : '';
+                    text.textContent = labels[key] + '：' + item.name + (angle ? `（${angle}）` : '');
+                    const remove = document.createElement('button');
+                    remove.type = 'button';
+                    remove.className = 'preset-chip-remove';
+                    remove.setAttribute('aria-label', '取消选择');
+                    remove.textContent = '×';
+                    remove.addEventListener('click', () => {
+                        imagePresetSelection[key] = null;
+                        renderSelected();
+                        renderItems(lastItems);
+                    });
+                    chip.append(text, remove);
+                    selectedBox.append(chip);
+                });
+                selectedBox.hidden = count === 0;
+            };
+
+            const renderItems = items => {
+                lastItems = items;
+                list.replaceChildren();
+                if (!items.length) {
+                    const empty = document.createElement('p');
+                    empty.className = 'form-hint';
+                    empty.textContent = '没有匹配的条目，换个关键词试试';
+                    list.append(empty);
+                    return;
+                }
+                const type = typeSelect.value;
+                items.forEach(item => {
+                    const picked = imagePresetSelection[type] && imagePresetSelection[type].id === item.id;
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'preset-item' + (picked ? ' active' : '');
+                    const name = document.createElement('span');
+                    name.className = 'preset-item-name';
+                    name.textContent = item.name;
+                    const meta = document.createElement('span');
+                    meta.className = 'preset-item-meta';
+                    meta.textContent = (item.category ? item.category + ' · ' : '') + item.tags;
+                    button.append(name, meta);
+                    button.addEventListener('click', () => {
+                        const key = typeSelect.value;
+                        if (imagePresetSelection[key] && imagePresetSelection[key].id === item.id) {
+                            imagePresetSelection[key] = null;
+                        } else {
+                            imagePresetSelection[key] = { id: item.id, name: item.name };
+                        }
+                        renderSelected();
+                        renderItems(lastItems);
+                    });
+                    list.append(button);
+                });
+            };
+
+            const loadPresets = async () => {
+                setMessage('正在加载...');
+                try {
+                    const data = await apiPost({
+                        action: 'get_image_presets',
+                        type: typeSelect.value,
+                        q: searchInput.value.trim(),
+                        category: categorySelect.value,
+                        limit: 30
+                    });
+                    if (!categoriesLoaded) {
+                        categoriesLoaded = true;
+                        (data.categories || []).forEach(name => {
+                            const option = document.createElement('option');
+                            option.value = name;
+                            option.textContent = name;
+                            categorySelect.append(option);
+                        });
+                    }
+                    renderItems(data.items || []);
+                    setMessage('共 ' + (data.items || []).length + ' 条，点击条目选择');
+                } catch (error) {
+                    setMessage(error.message, 'error');
+                }
+            };
+
+            panel.addEventListener('toggle', () => {
+                if (panel.open && lastItems.length === 0) loadPresets();
+            });
+            typeSelect.addEventListener('change', () => {
+                categorySelect.value = '';
+                loadPresets();
+            });
+            categorySelect.addEventListener('change', loadPresets);
+            searchInput.addEventListener('input', () => {
+                clearTimeout(timer);
+                timer = setTimeout(loadPresets, 300);
+            });
+            if (angleSelect) angleSelect.addEventListener('change', () => {
+                renderSelected();
+            });
+            renderSelected();
+        }
+
         // 范例解析：各生成 tab 内嵌面板；图片 tab 支持直接上传参考图交给识图模型
         function bindSamplePanels() {
-            document.querySelectorAll('details.sample-panel').forEach(panel => {
+            document.querySelectorAll('details.sample-panel[data-type]').forEach(panel => {
                 const type = panel.dataset.type;
                 const button = panel.querySelector('.sample-parse-btn');
                 const textarea = panel.querySelector('.sample-textarea');
@@ -1087,6 +1278,8 @@
             });
         }
 
+        bindNovelReference();
+        bindImagePresets();
         bindSamplePanels();
 
         // 页面就绪后尝试恢复上次的服务端会话

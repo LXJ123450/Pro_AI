@@ -95,6 +95,7 @@ function enforceRateLimit(string $action): void {
         'get_local_ai_status' => 60,
         'generate_novel' => 5,
         'generate_image' => 5,
+        'get_image_presets' => 60,
         'get_image_task' => 180,
         'refine_image' => 5,
         'generate_video' => 3,

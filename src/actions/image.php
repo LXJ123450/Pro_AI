@@ -41,14 +41,40 @@ function comfyuiRequest(string $url, ?array $payload, int $timeoutSeconds): arra
 }
 
 /**
+ * 画面比例映射到 SD1.5 尺寸（总像素与默认 512x640 接近，6GB 显存可控）
+ *
+ * @return array{0: int, 1: int}|null
+ */
+function resolveComfyUiSizeByAspect(string $aspect): ?array {
+    $map = [
+        '1:1' => [512, 512],
+        '3:4' => [512, 640],
+        '4:3' => [640, 512],
+        '9:16' => [448, 768],
+        '16:9' => [768, 448],
+    ];
+    return isset($map[$aspect]) ? $map[$aspect] : null;
+}
+
+/**
  * 构建 SD1.5 文生图工作流（节点 key 必须是非纯数字字符串，避免 json_encode 变成数组）
  */
-function buildComfyUiWorkflow(array $imageConfig, string $prompt, string $loraName = '', float $loraWeight = 0.7): array {
+function buildComfyUiWorkflow(array $imageConfig, string $prompt, string $loraName = '', float $loraWeight = 0.7, string $negativeExtra = '', ?array $sizeOverride = null): array {
     $options = is_array($imageConfig['comfyui'] ?? null) ? $imageConfig['comfyui'] : [];
 
-    $parts = explode('x', strtolower((string)($imageConfig['default_size'] ?? '512x640')));
-    $width = isset($parts[0]) ? max(256, (int)$parts[0]) : 512;
-    $height = isset($parts[1]) ? max(256, (int)$parts[1]) : 640;
+    if (is_array($sizeOverride) && count($sizeOverride) === 2) {
+        $width = max(256, (int)$sizeOverride[0]);
+        $height = max(256, (int)$sizeOverride[1]);
+    } else {
+        $parts = explode('x', strtolower((string)($imageConfig['default_size'] ?? '512x640')));
+        $width = isset($parts[0]) ? max(256, (int)$parts[0]) : 512;
+        $height = isset($parts[1]) ? max(256, (int)$parts[1]) : 640;
+    }
+
+    $negative = (string)($options['negative_prompt'] ?? 'lowres, bad anatomy, worst quality, low quality, watermark');
+    if ($negativeExtra !== '') {
+        $negative .= ', ' . $negativeExtra;
+    }
 
     $lora = trim($loraName);
 
@@ -59,7 +85,7 @@ function buildComfyUiWorkflow(array $imageConfig, string $prompt, string $loraNa
         'ckpt' => ['class_type' => 'CheckpointLoaderSimple', 'inputs' => ['ckpt_name' => (string)($options['checkpoint'] ?? '')]],
         'pos' => ['class_type' => 'CLIPTextEncode', 'inputs' => ['text' => $prompt, 'clip' => $clipRef]],
         'neg' => ['class_type' => 'CLIPTextEncode', 'inputs' => [
-            'text' => (string)($options['negative_prompt'] ?? 'lowres, bad anatomy, worst quality, low quality, watermark'),
+            'text' => $negative,
             'clip' => $clipRef,
         ]],
         'latent' => ['class_type' => 'EmptyLatentImage', 'inputs' => ['width' => $width, 'height' => $height, 'batch_size' => 1]],
@@ -153,7 +179,7 @@ function resolveComfyUiLora(array $imageConfig): array {
     return [$lora, max(0.1, min(1.2, $weight))];
 }
 
-function handleComfyUiImage(array $imageConfig, string $prompt): void {
+function handleComfyUiImage(array $imageConfig, string $prompt, string $negativeExtra = '', ?array $sizeOverride = null): void {
     $baseUrl = rtrim((string)($imageConfig['api_url'] ?? ''), '/');
     if ($baseUrl === '') {
         jsonResponse(['success' => false, 'error' => '图片生成功能未配置 api_url'], 400);
@@ -165,7 +191,7 @@ function handleComfyUiImage(array $imageConfig, string $prompt): void {
     }
 
     list($lora, $loraWeight) = resolveComfyUiLora($imageConfig);
-    submitComfyUiTask($imageConfig, buildComfyUiWorkflow($imageConfig, $prompt, $lora, $loraWeight));
+    submitComfyUiTask($imageConfig, buildComfyUiWorkflow($imageConfig, $prompt, $lora, $loraWeight, $negativeExtra, $sizeOverride));
 }
 
 /**
@@ -375,7 +401,21 @@ function handleGenerateImage(): void {
     if (empty($imageConfig['enabled'])) {
         jsonResponse(['success' => false, 'error' => '图片生成功能未配置，请在config.php中启用image_api'], 400);
     }
-    $prompt = requireText('prompt', '图片描述', 2000);
+
+    $basePrompt = postString('prompt');
+    if (!mb_check_encoding($basePrompt, 'UTF-8')) {
+        jsonResponse(['success' => false, 'error' => '图片描述包含非法字符编码'], 400);
+    }
+    if (mb_strlen($basePrompt) > 2000) {
+        jsonResponse(['success' => false, 'error' => '图片描述过长（最多 2000 字）'], 400);
+    }
+
+    // 姿势 / 服装提示词库：把所选条目合成为 SD1.5 英文 tag，并追加负面词
+    $preset = buildImagePresetPrompt($basePrompt);
+    $prompt = $preset['prompt'];
+    if ($prompt === '') {
+        jsonResponse(['success' => false, 'error' => '请输入图片描述，或先选择姿势 / 服装'], 400);
+    }
 
     // Pollinations：免注册，GET 地址直接返回图片，仅需构造 URL 交给前端加载
     if (($imageConfig['service'] ?? '') === 'pollinations') {
@@ -398,7 +438,8 @@ function handleGenerateImage(): void {
 
     // 本地 ComfyUI：提交任务，由前端轮询 get_image_task 获取结果
     if (($imageConfig['service'] ?? '') === 'comfyui') {
-        handleComfyUiImage($imageConfig, $prompt);
+        $sizeOverride = resolveComfyUiSizeByAspect(postString('aspect'));
+        handleComfyUiImage($imageConfig, $prompt, $preset['negative'], $sizeOverride);
     }
 
     if (empty($imageConfig['api_key'])) {

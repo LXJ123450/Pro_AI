@@ -126,6 +126,18 @@
                         </select>
                     </div>
                     <div class="form-group">
+                        <label for="novel-reference">参考文本 / 已有正文（可选）</label>
+                        <textarea id="novel-reference" placeholder="粘贴一段小说片段：选择「参考风格写文」会模仿它的文风与节奏；选择「直接续写」会接着这段的结尾往下写"></textarea>
+                    </div>
+                    <div class="sample-actions">
+                        <input type="file" id="novel-reference-file" class="sample-file" accept=".txt,.md" aria-label="上传参考文本">
+                        <select id="novel-reference-mode" class="novel-mode-select" aria-label="参考文本使用方式">
+                            <option value="style" selected>参考风格写文</option>
+                            <option value="continue">直接续写</option>
+                        </select>
+                        <span id="novel-reference-message" class="config-message"></span>
+                    </div>
+                    <div class="form-group">
                         <label for="novel-prompt">创作要求</label>
                         <textarea id="novel-prompt" placeholder="请描述你想要创作的小说内容、故事背景、人物设定等..."></textarea>
                     </div>
@@ -163,7 +175,7 @@
                 <form id="image-form">
                     <div class="form-group">
                         <label for="image-prompt">图片描述</label>
-                        <textarea id="image-prompt" placeholder="请详细描述你想要生成的图片内容，例如：一个美丽的城堡在山上，日出，油画风格..." required></textarea>
+                        <textarea id="image-prompt" placeholder="请详细描述你想要生成的图片内容，例如：一个美丽的城堡在山上，日出，油画风格..."></textarea>
                     </div>
                     <?php if ($loraChoices !== []): ?>
                     <div class="lora-row">
@@ -183,6 +195,43 @@
                     </div>
                     <p class="form-hint">LoRA 仅对本地 ComfyUI 生效；0.5~0.8 较稳，过高容易出现画面崩坏。</p>
                     <?php endif; ?>
+                    <details class="sample-panel preset-panel" id="image-preset-panel">
+                        <summary>🎭 姿势 / 服装提示词库（可选，自动合成英文 tag）</summary>
+                        <div class="preset-toolbar">
+                            <input type="text" id="preset-search" class="preset-search" placeholder="搜索姿势或服装，例如：站立 / 女仆装">
+                            <select id="preset-type" aria-label="提示词库类型">
+                                <option value="pose" selected>姿势</option>
+                                <option value="costume">服装</option>
+                            </select>
+                            <select id="preset-category" aria-label="提示词库分类">
+                                <option value="">全部分类</option>
+                            </select>
+                        </div>
+                        <div class="preset-actions">
+                            <label for="preset-angle">镜头角度</label>
+                            <select id="preset-angle" aria-label="镜头角度">
+                                <option value="">默认</option>
+                                <option value="front">正面</option>
+                                <option value="diag">斜侧</option>
+                                <option value="side">侧面</option>
+                                <option value="high">俯视</option>
+                                <option value="low">仰视</option>
+                            </select>
+                            <span id="preset-message" class="config-message"></span>
+                        </div>
+                        <div id="preset-selected" class="preset-selected" hidden></div>
+                        <div id="preset-list" class="preset-list"></div>
+                    </details>
+                    <div class="form-group">
+                        <label for="image-aspect">画面比例（仅本地 ComfyUI 生效）</label>
+                        <select id="image-aspect">
+                            <option value="3:4" selected>3:4 竖版（512×640）</option>
+                            <option value="1:1">1:1 方图（512×512）</option>
+                            <option value="4:3">4:3 横版（640×512）</option>
+                            <option value="9:16">9:16 长竖版（448×768）</option>
+                            <option value="16:9">16:9 宽屏（768×448）</option>
+                        </select>
+                    </div>
                     <button type="submit" class="btn btn-primary">生成图片</button>
                 </form>
                 <p class="form-hint" id="comfy-status">正在检测本地图片服务...</p>

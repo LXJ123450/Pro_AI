@@ -20,6 +20,7 @@ require_once __DIR__ . '/novel_stream.php';
 require_once __DIR__ . '/parse_example.php';
 require_once __DIR__ . '/local_status.php';
 require_once __DIR__ . '/image.php';
+require_once __DIR__ . '/image_presets.php';
 require_once __DIR__ . '/video.php';
 require_once __DIR__ . '/video_task.php';
 
@@ -41,6 +42,7 @@ function getActionHandlers(): array {
         'parse_example' => 'handleParseExample',
         'get_local_ai_status' => 'handleGetLocalAiStatus',
         'generate_image' => 'handleGenerateImage',
+        'get_image_presets' => 'handleGetImagePresets',
         'get_image_task' => 'handleGetImageTask',
         'refine_image' => 'handleRefineImage',
         'generate_video' => 'handleGenerateVideo',
