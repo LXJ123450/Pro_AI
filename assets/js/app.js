@@ -1,7 +1,10 @@
         const CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]').content;
         const WELCOME_MESSAGE = '👋 你好！我是你的AI助手，有什么可以帮助你的吗？';
         let currentAIService = '';
-        const sending = { chat: false, novel: false, image: false, video: false };
+        const sending = { chat: false, novel: false, image: false, video: false, parse: false };
+        // 本地 AI 服务：Ollama（对话）、ComfyUI（图片）
+        let localServiceKeys = [];
+        let localStatus = { ollama: null, comfyui: null };
         // 服务端会话标识：由后端生成并持久化在本地，刷新页面后可继续上下文
         const CONVERSATION_KEY = 'ai_conversation_id';
         let conversationId = localStorage.getItem(CONVERSATION_KEY) || '';
@@ -148,12 +151,14 @@
         // 初始化
         loadAIServices();
         checkConfig();
+        refreshLocalStatus();
 
         document.getElementById('ai-select').addEventListener('change', (e) => {
             currentAIService = e.target.value;
             updateAIStatus();
             resetChat();
             closeConfigPanel();
+            checkSelectedLocalService();
         });
 
         // AI 服务配置面板
@@ -223,6 +228,115 @@
         document.getElementById('config-clear-key').addEventListener('click', () => {
             if (window.confirm('确定清除该服务已保存的 API Key？')) {
                 saveServiceConfig(true);
+            }
+        });
+
+        // 本地 AI 服务（Ollama / ComfyUI）状态检测与启动指引弹窗
+        const LOCAL_AI_GUIDES = {
+            ollama: {
+                title: '本地对话模型（Ollama）未启动',
+                steps: [
+                    '按 Win + R 输入 powershell 回车，打开命令行窗口',
+                    "执行：<code>$env:OLLAMA_MODELS='E:\\AI\\ollma\\model'; E:\\AI\\ollma\\ollama.exe serve</code>",
+                    '看到 <code>Listening on 127.0.0.1:11434</code> 表示启动成功，保持窗口不要关闭',
+                    '回到本页点击下方「我已启动，重新检测」，再重新发送请求'
+                ]
+            },
+            comfyui: {
+                title: '本地图片服务（ComfyUI）未启动',
+                steps: [
+                    '双击 <code>E:\\AI\\ComfyUI\\start_comfyui.bat</code>，会在后台启动（窗口最小化属正常）',
+                    '首次启动需要加载约 2GB 底模，等待 40~90 秒',
+                    '浏览器能打开 <code>http://127.0.0.1:8188</code> 即表示就绪',
+                    '仍不可用时查看日志 <code>E:\\Project\\Pro_AI\\.tmp\\comfy.log</code>'
+                ]
+            }
+        };
+
+        const localAiModal = document.getElementById('local-ai-modal');
+
+        function showLocalAiModal(kind) {
+            const guide = LOCAL_AI_GUIDES[kind];
+            if (!guide) return;
+            document.getElementById('local-ai-modal-title').textContent = guide.title;
+            document.getElementById('local-ai-modal-body').innerHTML = '<p>该功能依赖本机已部署的服务，按以下步骤启动后即可使用：</p><ol>'
+                + guide.steps.map(step => '<li>' + step + '</li>').join('')
+                + '</ol>';
+            document.getElementById('local-ai-modal-message').textContent = '';
+            document.getElementById('local-ai-modal-retry').dataset.kind = kind;
+            localAiModal.hidden = false;
+        }
+
+        function hideLocalAiModal() {
+            localAiModal.hidden = true;
+            document.getElementById('local-ai-modal-message').textContent = '';
+        }
+
+        // 图片生成页顶部的本地服务状态提示
+        function renderComfyStatus() {
+            const hint = document.getElementById('comfy-status');
+            if (!hint) return;
+            hint.replaceChildren();
+            const comfy = localStatus.comfyui;
+            if (!comfy) return;
+            const text = document.createElement('span');
+            if (comfy.online) {
+                text.className = 'status-ok';
+                text.textContent = '本地图片服务（ComfyUI）已就绪：' + comfy.url;
+                hint.appendChild(text);
+                return;
+            }
+            text.className = 'status-bad';
+            text.textContent = '本地图片服务（ComfyUI）未启动。';
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'link-btn';
+            button.textContent = '查看启动方法';
+            button.addEventListener('click', () => showLocalAiModal('comfyui'));
+            hint.append(text, button);
+        }
+
+        async function refreshLocalStatus() {
+            try {
+                const data = await apiPost({ action: 'get_local_ai_status' });
+                localStatus = { ollama: data.ollama, comfyui: data.comfyui };
+                localServiceKeys = data.local_service_keys || [];
+            } catch (error) {
+                return null;
+            }
+            renderComfyStatus();
+            return localStatus;
+        }
+
+        // 切换到本地服务时，若服务未启动则直接弹出启动指引
+        function checkSelectedLocalService() {
+            if (!localServiceKeys.includes(currentAIService)) return;
+            if (localStatus.ollama && localStatus.ollama.online) return;
+            showLocalAiModal('ollama');
+        }
+
+        document.getElementById('local-ai-modal-close').addEventListener('click', hideLocalAiModal);
+        document.getElementById('local-ai-modal-dismiss').addEventListener('click', hideLocalAiModal);
+        localAiModal.addEventListener('click', (event) => {
+            if (event.target === localAiModal) hideLocalAiModal();
+        });
+        document.getElementById('local-ai-modal-retry').addEventListener('click', async () => {
+            const button = document.getElementById('local-ai-modal-retry');
+            const message = document.getElementById('local-ai-modal-message');
+            const kind = button.dataset.kind || 'ollama';
+            button.disabled = true;
+            message.className = 'config-message';
+            message.textContent = '正在重新检测...';
+            const status = await refreshLocalStatus();
+            button.disabled = false;
+            const target = status ? status[kind] : null;
+            if (target && target.online) {
+                message.className = 'config-message success';
+                message.textContent = '服务已就绪，可以继续使用';
+                setTimeout(hideLocalAiModal, 1200);
+            } else {
+                message.className = 'config-message error';
+                message.textContent = '仍未检测到服务，请确认启动窗口没有报错';
             }
         });
 
@@ -313,11 +427,11 @@
             return content;
         }
 
-        // 小说分阶段流式生成：持续接收增量，避免长文本请求超时
-        async function streamNovelStage(payload, onProgress) {
+        // 通用 SSE 动作：持续接收增量，避免长文本请求超时
+        async function streamSseAction(action, payload, onProgress) {
             const params = new URLSearchParams();
             Object.keys(payload).forEach(key => params.append(key, payload[key]));
-            params.append('action', 'generate_novel_stream');
+            params.append('action', action);
             params.append('csrf_token', CSRF_TOKEN);
 
             const response = await fetch('', {
@@ -376,6 +490,11 @@
             if (streamError !== '') throw new Error(streamError);
             if (!finished && content === '') throw new Error('生成中断，请重试');
             return content;
+        }
+
+        // 小说分阶段流式生成
+        function streamNovelStage(payload, onProgress) {
+            return streamSseAction('generate_novel_stream', payload, onProgress);
         }
 
         // 刷新页面后恢复服务端会话历史
@@ -444,6 +563,10 @@
                     aiMessageDiv.textContent = `❌ 错误: ${fallbackError.message}`;
                     // 请求失败时回退最后一条用户消息，避免重复发送
                     chatMessages.pop();
+                    // 本地模型未启动时弹出启动指引
+                    if (localServiceKeys.includes(currentAIService)) {
+                        showLocalAiModal('ollama');
+                    }
                 }
             }
 
@@ -589,38 +712,197 @@
             }
         });
 
-        // 图片生成
+        // 图片生成：本地 ComfyUI 为「提交任务 → 前端轮询」两段式，避免长请求被 40 秒超时中断
+        async function pollImageTask(taskId, pollInterval, timeoutSeconds, loadingText) {
+            const deadline = Date.now() + (Number(timeoutSeconds) || 180) * 1000;
+            const interval = Math.max(1, Number(pollInterval) || 2);
+            const startedAt = Date.now();
+            while (Date.now() < deadline) {
+                await new Promise(resolve => setTimeout(resolve, interval * 1000));
+                const data = await apiPost({ action: 'get_image_task', task_id: taskId });
+                if (data.status === 'completed' && data.image_url) {
+                    return data.image_url;
+                }
+                if (loadingText) {
+                    const elapsed = Math.round((Date.now() - startedAt) / 1000);
+                    loadingText.textContent = `正在生成中（本地模型首次加载较慢）...已等待 ${elapsed} 秒`;
+                }
+            }
+            const waited = Math.round((Date.now() - startedAt) / 1000);
+            throw new Error(`生成超时（已等待 ${waited} 秒）。请确认 ComfyUI 仍在运行，或降低分辨率/步数后重试`);
+        }
+
+        // 结果图片卡片：每张图都可在此基础上继续微调（图生图）
+        function appendImageResult(container, imageUrl, prompt, titleText, loraName, loraWeight) {
+            container.style.display = 'block';
+
+            const card = document.createElement('div');
+            card.className = 'image-card';
+
+            const title = document.createElement('h3');
+            title.textContent = titleText;
+            if (loraName && loraName !== 'none') {
+                const loraTag = document.createElement('span');
+                loraTag.className = 'image-card-lora';
+                loraTag.textContent = 'LoRA：' + loraName + '（' + Number(loraWeight || 0).toFixed(2) + '）';
+                title.append(' ', loraTag);
+            }
+
+            const img = document.createElement('img');
+            img.src = imageUrl;
+            img.alt = prompt;
+
+            const refine = document.createElement('details');
+            refine.className = 'refine-panel';
+            const summary = document.createElement('summary');
+            summary.textContent = '✏️ 基于这张图继续微调';
+
+            const descField = document.createElement('div');
+            descField.className = 'form-group';
+            const descLabel = document.createElement('label');
+            descLabel.textContent = '微调描述';
+            const textarea = document.createElement('textarea');
+            textarea.value = prompt;
+            textarea.placeholder = '在原图基础上补充或修改，例如：改成夜景、加强光影、人物表情更柔和';
+            descField.append(descLabel, textarea);
+
+            const strengthRow = document.createElement('div');
+            strengthRow.className = 'refine-strength';
+            const strengthLabel = document.createElement('span');
+            const range = document.createElement('input');
+            range.type = 'range';
+            range.min = '0.15';
+            range.max = '0.9';
+            range.step = '0.05';
+            range.value = '0.5';
+            const syncStrength = () => {
+                strengthLabel.textContent = '改动幅度 ' + Number(range.value).toFixed(2);
+            };
+            syncStrength();
+            range.addEventListener('input', syncStrength);
+            strengthRow.append(strengthLabel, range);
+
+            const hint = document.createElement('p');
+            hint.className = 'form-hint';
+            hint.textContent = '幅度越小越接近原图（0.2~0.4 局部调整），越大重绘越明显（0.6~0.8 重新构图）';
+
+            const actions = document.createElement('div');
+            actions.className = 'refine-actions';
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'btn btn-small btn-ghost';
+            button.textContent = '开始微调';
+            const message = document.createElement('span');
+            message.className = 'config-message';
+            actions.append(button, message);
+
+            button.addEventListener('click', async () => {
+                const text = textarea.value.trim();
+                if (!text) {
+                    message.className = 'config-message error';
+                    message.textContent = '请填写微调描述';
+                    return;
+                }
+                button.disabled = true;
+                message.className = 'config-message';
+                message.textContent = '已提交，正在生成...';
+                try {
+                    const data = await apiPost({
+                        action: 'refine_image',
+                        source: imageUrl,
+                        prompt: text,
+                        strength: range.value,
+                        lora: loraName || 'none',
+                        lora_weight: loraWeight || ''
+                    });
+                    let refinedUrl = data.image_url || '';
+                    if (!refinedUrl && data.task_id) {
+                        refinedUrl = await pollImageTask(data.task_id, data.poll_interval, data.poll_timeout, message);
+                    }
+                    if (!refinedUrl) {
+                        throw new Error('微调未返回结果');
+                    }
+                    const safeUrl = safeResourceUrl(refinedUrl);
+                    if (!safeUrl) {
+                        throw new Error('返回的图片地址不合法');
+                    }
+                    message.className = 'config-message';
+                    message.textContent = '';
+                    appendImageResult(container, safeUrl, text, '✏️ 微调完成', loraName, loraWeight);
+                } catch (error) {
+                    message.className = 'config-message error';
+                    message.textContent = error.message;
+                    if (/本地图片服务|ComfyUI/i.test(error.message)) {
+                        showLocalAiModal('comfyui');
+                        refreshLocalStatus();
+                    }
+                } finally {
+                    button.disabled = false;
+                }
+            });
+
+            refine.append(descField, strengthRow, hint, actions);
+            card.append(title, document.createElement('br'), img, refine);
+            container.appendChild(card);
+        }
+
+        const loraSelect = document.getElementById('image-lora');
+        const loraWeightInput = document.getElementById('image-lora-weight');
+        const loraWeightLabel = document.getElementById('image-lora-weight-value');
+        if (loraWeightInput && loraWeightLabel) {
+            loraWeightInput.addEventListener('input', () => {
+                loraWeightLabel.textContent = Number(loraWeightInput.value).toFixed(2);
+            });
+        }
+
         document.getElementById('image-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             if (sending.image) return;
             sending.image = true;
 
             const prompt = document.getElementById('image-prompt').value.trim();
+            const loraName = loraSelect ? loraSelect.value : '';
+            const loraWeight = loraWeightInput ? loraWeightInput.value : '';
             const loading = document.getElementById('image-loading');
+            const loadingText = loading.querySelector('p');
             const result = document.getElementById('image-result');
 
             loading.classList.add('active');
+            loadingText.textContent = '正在提交任务...';
+            result.replaceChildren();
             result.style.display = 'none';
 
             try {
-                const data = await apiPost({ action: 'generate_image', prompt });
-                const imageUrl = safeResourceUrl(data.image_url);
+                const payload = { action: 'generate_image', prompt };
+                if (loraSelect) {
+                    payload.lora = loraName;
+                    payload.lora_weight = loraWeight;
+                }
+                const data = await apiPost(payload);
+                let imageUrl = data.image_url || '';
+                if (!imageUrl && data.task_id) {
+                    loadingText.textContent = '正在生成中（本地模型首次加载较慢）...';
+                    imageUrl = await pollImageTask(data.task_id, data.poll_interval, data.poll_timeout, loadingText);
+                }
                 if (!imageUrl) {
+                    throw new Error('图片生成未返回结果');
+                }
+                const safeUrl = safeResourceUrl(imageUrl);
+                if (!safeUrl) {
                     throw new Error('返回的图片地址不合法');
                 }
-                result.replaceChildren();
-                const title = document.createElement('h3');
-                title.textContent = '✅ 生成完成';
-                const img = document.createElement('img');
-                img.src = imageUrl;
-                img.alt = prompt;
-                result.append(title, document.createElement('br'), img);
-                result.style.display = 'block';
+                appendImageResult(result, safeUrl, prompt, '✅ 生成完成', loraName, loraWeight);
             } catch (error) {
                 renderErrorResult(result, error.message);
+                // 本地图片服务未启动时弹出启动指引，并刷新状态提示
+                if (/本地图片服务|ComfyUI/i.test(error.message)) {
+                    showLocalAiModal('comfyui');
+                    refreshLocalStatus();
+                }
             } finally {
                 sending.image = false;
                 loading.classList.remove('active');
+                loadingText.textContent = '正在生成中，请稍候...';
             }
         });
 
@@ -688,6 +970,124 @@
                 loading.querySelector('p').textContent = '正在提交任务，结果生成后会自动展示...';
             }
         });
+
+        // 把本地图片压成 data URL（长边最多 768px），避免上传体积过大
+        function fileToDataUrl(file, maxSize) {
+            return new Promise((resolve, reject) => {
+                const image = new Image();
+                const objectUrl = URL.createObjectURL(file);
+                image.onload = () => {
+                    const scale = Math.min(1, maxSize / Math.max(image.width, image.height));
+                    const width = Math.max(1, Math.round(image.width * scale));
+                    const height = Math.max(1, Math.round(image.height * scale));
+                    const canvas = document.createElement('canvas');
+                    canvas.width = width;
+                    canvas.height = height;
+                    canvas.getContext('2d').drawImage(image, 0, 0, width, height);
+                    URL.revokeObjectURL(objectUrl);
+                    resolve(canvas.toDataURL('image/jpeg', 0.85));
+                };
+                image.onerror = () => {
+                    URL.revokeObjectURL(objectUrl);
+                    reject(new Error('无法读取这张图片，请换一张试试'));
+                };
+                image.src = objectUrl;
+            });
+        }
+
+        // 范例解析：各生成 tab 内嵌面板；图片 tab 支持直接上传参考图交给识图模型
+        function bindSamplePanels() {
+            document.querySelectorAll('details.sample-panel').forEach(panel => {
+                const type = panel.dataset.type;
+                const button = panel.querySelector('.sample-parse-btn');
+                const textarea = panel.querySelector('.sample-textarea');
+                const textFileInput = panel.querySelector('.sample-file');
+                const imageFileInput = panel.querySelector('.sample-image-file');
+                const preview = panel.querySelector('.sample-preview');
+                const message = panel.querySelector('.sample-message');
+                const resultBox = panel.querySelector('.sample-result');
+                let imageData = '';
+
+                const setMessage = (text, state) => {
+                    message.className = 'config-message sample-message' + (state ? ' ' + state : '');
+                    message.textContent = text;
+                };
+
+                if (textFileInput) {
+                    textFileInput.addEventListener('change', () => {
+                        const file = textFileInput.files && textFileInput.files[0];
+                        if (!file) return;
+                        if (file.size > 200 * 1024) {
+                            setMessage('文件过大（最多 200KB），请直接粘贴文字内容', 'error');
+                            return;
+                        }
+                        const reader = new FileReader();
+                        reader.onload = () => {
+                            textarea.value = String(reader.result || '').slice(0, 4000);
+                            setMessage('已读取：' + file.name);
+                        };
+                        reader.readAsText(file, 'UTF-8');
+                    });
+                }
+
+                if (imageFileInput) {
+                    imageFileInput.addEventListener('change', async () => {
+                        const file = imageFileInput.files && imageFileInput.files[0];
+                        imageData = '';
+                        preview.hidden = true;
+                        if (!file) return;
+                        if (file.size > 10 * 1024 * 1024) {
+                            setMessage('图片过大（最多 10MB），请压缩后再上传', 'error');
+                            imageFileInput.value = '';
+                            return;
+                        }
+                        try {
+                            imageData = await fileToDataUrl(file, 768);
+                            preview.src = imageData;
+                            preview.hidden = false;
+                            setMessage('已选择参考图：' + file.name);
+                        } catch (error) {
+                            setMessage(error.message, 'error');
+                            imageFileInput.value = '';
+                        }
+                    });
+                }
+
+                button.addEventListener('click', async () => {
+                    if (sending.parse) return;
+                    const sample = textarea.value.trim();
+                    if (!sample && !imageData) {
+                        setMessage('请先上传参考图或粘贴范例内容', 'error');
+                        return;
+                    }
+                    sending.parse = true;
+                    button.disabled = true;
+                    setMessage('正在解析...');
+                    resultBox.hidden = false;
+                    resultBox.textContent = '正在解析范例...';
+                    try {
+                        const payload = { type, sample };
+                        if (imageData) payload.image_data = imageData;
+                        const content = await streamSseAction('parse_example', payload, text => {
+                            resultBox.textContent = text;
+                        });
+                        resultBox.textContent = content;
+                        setMessage('解析完成，可复制其中的提示词到上方输入框', 'success');
+                    } catch (error) {
+                        resultBox.textContent = '❌ 出错了：' + error.message;
+                        setMessage(error.message, 'error');
+                        if (!imageData && localServiceKeys.includes(currentAIService)) {
+                            showLocalAiModal('ollama');
+                        }
+                    } finally {
+                        sending.parse = false;
+                        button.disabled = false;
+                    }
+                });
+            });
+        }
+
+        bindSamplePanels();
 
         // 页面就绪后尝试恢复上次的服务端会话
         restoreConversation();

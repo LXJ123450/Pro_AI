@@ -91,8 +91,12 @@ function enforceRateLimit(string $action): void {
         'save_ai_service_config' => 10,
         'generate_novel_stage' => 30,
         'generate_novel_stream' => 30,
+        'parse_example' => 10,
+        'get_local_ai_status' => 60,
         'generate_novel' => 5,
         'generate_image' => 5,
+        'get_image_task' => 180,
+        'refine_image' => 5,
         'generate_video' => 3,
         'get_video_task' => 60,
     ];

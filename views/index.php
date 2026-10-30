@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * 页面模板：引用外置样式与脚本，输出 CSRF Token
  */
@@ -17,10 +17,10 @@ if (!defined('AI_CREATOR_APP')) {
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="assets/css/app.css?v=20261027">
+    <link rel="stylesheet" href="assets/css/app.css?v=20261029d">
 </head>
 <body>
 <?php require __DIR__ . '/index.body.php'; ?>
-    <script src="assets/js/app.js?v=20261027c"></script>
+    <script src="assets/js/app.js?v=20261029d"></script>
 </body>
 </html>

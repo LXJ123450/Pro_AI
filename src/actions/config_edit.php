@@ -114,9 +114,10 @@ function handleSaveAiServiceConfig(): void {
     }
 
     $effectiveKey = $clearKey ? '' : ($apiKey !== '' ? $apiKey : $currentKey);
+    $backup = (string)($result['backup'] ?? '');
     jsonResponse([
         'success' => true,
-        'message' => '配置已保存',
+        'message' => $backup !== '' ? '配置已保存，原配置已备份为 ' . $backup : '配置未发生变化，无需保存',
         'service' => [
             'key' => $serviceKey,
             'api_base_url' => $baseUrl,

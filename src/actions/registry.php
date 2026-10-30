@@ -17,6 +17,8 @@ require_once __DIR__ . '/config_edit.php';
 require_once __DIR__ . '/novel.php';
 require_once __DIR__ . '/novel_pipeline.php';
 require_once __DIR__ . '/novel_stream.php';
+require_once __DIR__ . '/parse_example.php';
+require_once __DIR__ . '/local_status.php';
 require_once __DIR__ . '/image.php';
 require_once __DIR__ . '/video.php';
 require_once __DIR__ . '/video_task.php';
@@ -36,7 +38,11 @@ function getActionHandlers(): array {
         'generate_novel' => 'handleGenerateNovel',
         'generate_novel_stage' => 'handleGenerateNovelStage',
         'generate_novel_stream' => 'handleGenerateNovelStream',
+        'parse_example' => 'handleParseExample',
+        'get_local_ai_status' => 'handleGetLocalAiStatus',
         'generate_image' => 'handleGenerateImage',
+        'get_image_task' => 'handleGetImageTask',
+        'refine_image' => 'handleRefineImage',
         'generate_video' => 'handleGenerateVideo',
         'get_video_task' => 'handleGetVideoTask',
     ];

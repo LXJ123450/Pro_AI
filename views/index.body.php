@@ -132,6 +132,19 @@
                     <button type="submit" class="btn btn-primary">开始创作</button>
                 </form>
                 <p class="form-hint">若提示额度受限，请点击右上角「⚙ 配置」，切换到智谱 GLM 或硅基流动的免费模型（需免费注册，页面内附地址）。</p>
+                <details class="sample-panel" data-type="novel">
+                    <summary>📎 有参考范例？让 AI 反推写作提示词与生成流程</summary>
+                    <div class="form-group">
+                        <label for="novel-sample">范例内容</label>
+                        <textarea id="novel-sample" class="sample-textarea" placeholder="粘贴一段小说片段或故事梗概，AI 会分析其题材、人物、节奏，并给出可复现的创作提示词"></textarea>
+                    </div>
+                    <div class="sample-actions">
+                        <input type="file" class="sample-file" accept=".txt,.md" aria-label="上传文本范例">
+                        <button type="button" class="btn btn-small btn-ghost sample-parse-btn">解析范例</button>
+                        <span class="config-message sample-message"></span>
+                    </div>
+                    <div class="sample-result" hidden></div>
+                </details>
                 <div class="loading" id="novel-loading">
                     <div class="spinner"></div>
                     <p>正在分阶段创作（大纲 → 分章 → 梗概），请稍候...</p>
@@ -141,13 +154,55 @@
 
             <!-- 图片生成 -->
             <div id="image" class="tab-content">
+                <?php
+                $comfyUiOptions = is_array($config['image_api']['comfyui'] ?? null) ? $config['image_api']['comfyui'] : [];
+                $loraChoices = is_array($comfyUiOptions['lora_options'] ?? null) ? $comfyUiOptions['lora_options'] : [];
+                $defaultLoraName = (string)($comfyUiOptions['lora'] ?? '');
+                $defaultLoraStrength = (float)($comfyUiOptions['lora_weight'] ?? 0.7);
+                ?>
                 <form id="image-form">
                     <div class="form-group">
                         <label for="image-prompt">图片描述</label>
                         <textarea id="image-prompt" placeholder="请详细描述你想要生成的图片内容，例如：一个美丽的城堡在山上，日出，油画风格..." required></textarea>
                     </div>
+                    <?php if ($loraChoices !== []): ?>
+                    <div class="lora-row">
+                        <div class="form-group">
+                            <label for="image-lora">画风 / 角色 LoRA</label>
+                            <select id="image-lora">
+                                <option value="none"<?php echo $defaultLoraName === '' ? ' selected' : ''; ?>>不使用 LoRA</option>
+                                <?php foreach ($loraChoices as $loraFile => $loraLabel): ?>
+                                <option value="<?php echo htmlspecialchars((string)$loraFile, ENT_QUOTES, 'UTF-8'); ?>"<?php echo $loraFile === $defaultLoraName ? ' selected' : ''; ?>><?php echo htmlspecialchars((string)$loraLabel, ENT_QUOTES, 'UTF-8'); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="image-lora-weight">LoRA 强度：<span id="image-lora-weight-value"><?php echo number_format($defaultLoraStrength, 2); ?></span></label>
+                            <input type="range" id="image-lora-weight" min="0.1" max="1.2" step="0.05" value="<?php echo number_format($defaultLoraStrength, 2); ?>">
+                        </div>
+                    </div>
+                    <p class="form-hint">LoRA 仅对本地 ComfyUI 生效；0.5~0.8 较稳，过高容易出现画面崩坏。</p>
+                    <?php endif; ?>
                     <button type="submit" class="btn btn-primary">生成图片</button>
                 </form>
+                <p class="form-hint" id="comfy-status">正在检测本地图片服务...</p>
+                <details class="sample-panel" data-type="image">
+                    <summary>📎 有参考图？上传图片，让 AI 反推绘画提示词与生成流程</summary>
+                    <div class="form-group">
+                        <label for="image-sample-file">参考图（PNG / JPG / WEBP）</label>
+                        <input type="file" id="image-sample-file" class="sample-image-file" accept="image/png,image/jpeg,image/webp" aria-label="上传参考图">
+                        <img class="sample-preview" alt="参考图预览" hidden>
+                    </div>
+                    <div class="form-group">
+                        <label for="image-sample">补充描述（可选）</label>
+                        <textarea id="image-sample" class="sample-textarea" placeholder="可补充你想强调或改动的地方，例如：保留这个画风，但把背景换成夜晚的街道"></textarea>
+                    </div>
+                    <div class="sample-actions">
+                        <button type="button" class="btn btn-small btn-ghost sample-parse-btn">解析参考图</button>
+                        <span class="config-message sample-message"></span>
+                    </div>
+                    <div class="sample-result" hidden></div>
+                </details>
                 <div class="loading" id="image-loading">
                     <div class="spinner"></div>
                     <p>正在生成中，请稍候...</p>
@@ -167,11 +222,40 @@
                 <p class="form-hint">视频生成使用智谱 CogVideoX-Flash 免费模型。首次使用请到
                     <a href="https://open.bigmodel.cn/" target="_blank" rel="noopener noreferrer">open.bigmodel.cn</a>
                     免费注册获取 API Key，然后点击右上角「⚙ 配置」填写。</p>
+                <details class="sample-panel" data-type="video">
+                    <summary>📎 有参考范例？让 AI 反推视频提示词与分镜流程</summary>
+                    <div class="form-group">
+                        <label for="video-sample">范例内容</label>
+                        <textarea id="video-sample" class="sample-textarea" placeholder="粘贴一段视频分镜描述或镜头说明，AI 会分析镜头语言并给出可复现的生成提示词"></textarea>
+                    </div>
+                    <div class="sample-actions">
+                        <input type="file" class="sample-file" accept=".txt,.md" aria-label="上传文本范例">
+                        <button type="button" class="btn btn-small btn-ghost sample-parse-btn">解析范例</button>
+                        <span class="config-message sample-message"></span>
+                    </div>
+                    <div class="sample-result" hidden></div>
+                </details>
                 <div class="loading" id="video-loading">
                     <div class="spinner"></div>
                     <p>正在提交任务，结果生成后会自动展示...</p>
                 </div>
                 <div id="video-result" class="result-container" style="display: none;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 本地 AI 服务未启动提示弹窗 -->
+    <div id="local-ai-modal" class="modal-overlay" hidden>
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="local-ai-modal-title">
+            <div class="modal-head">
+                <h3 id="local-ai-modal-title">本地 AI 服务未启动</h3>
+                <button type="button" id="local-ai-modal-close" class="config-close" aria-label="关闭">×</button>
+            </div>
+            <div id="local-ai-modal-body" class="modal-body"></div>
+            <div class="modal-actions">
+                <button type="button" id="local-ai-modal-retry" class="btn btn-primary">我已启动，重新检测</button>
+                <button type="button" id="local-ai-modal-dismiss" class="btn btn-ghost">稍后再说</button>
+                <span id="local-ai-modal-message" class="config-message"></span>
             </div>
         </div>
     </div>

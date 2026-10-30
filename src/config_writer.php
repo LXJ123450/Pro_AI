@@ -134,6 +134,23 @@ function replacePhpArrayField(string $block, string $field, string $value): stri
 }
 
 /**
+ * 备份当前配置为 config.php.bak<YYYYMMDD><2 位序号>，例如 config.php.bak2026102901
+ *
+ * @return string 备份文件名；失败或当日序号用尽返回空字符串
+ */
+function backupConfigFile(string $path): string {
+    $prefix = $path . '.bak' . date('Ymd');
+    for ($index = 1; $index <= 99; $index++) {
+        $candidate = $prefix . sprintf('%02d', $index);
+        if (file_exists($candidate)) {
+            continue;
+        }
+        return @copy($path, $candidate) ? basename($candidate) : '';
+    }
+    return '';
+}
+
+/**
  * 原子写入配置文件
  */
 function writeConfigFileAtomically(string $path, string $content): bool {
@@ -162,7 +179,7 @@ function writeConfigFileAtomically(string $path, string $content): bool {
  * 保存指定 AI 服务的可编辑字段
  *
  * @param array $fields 仅允许包含 api_key / api_base_url / default_model
- * @return array{success: bool, error: string}
+ * @return array{success: bool, error: string, backup: string}
  */
 function saveAiServiceConfig(string $serviceKey, array $fields): array {
     $path = configFilePath();
@@ -218,8 +235,18 @@ function saveAiServiceConfig(string $serviceKey, array $fields): array {
         . $newServicesBlock
         . substr($source, $servicesBounds[1] + 1);
 
+    if ($newSource === $source) {
+        return ['success' => true, 'error' => '', 'backup' => ''];
+    }
+
+    // 写入前先备份，便于追溯历史配置
+    $backup = backupConfigFile($path);
+    if ($backup === '') {
+        return ['success' => false, 'error' => '配置备份失败，已取消写入（请检查目录写入权限或当日备份数量是否已达 99 份）'];
+    }
+
     if (!writeConfigFileAtomically($path, $newSource)) {
         return ['success' => false, 'error' => '写入配置文件失败'];
     }
-    return ['success' => true, 'error' => ''];
+    return ['success' => true, 'error' => '', 'backup' => $backup];
 }
