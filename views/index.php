@@ -17,10 +17,10 @@ if (!defined('AI_CREATOR_APP')) {
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="assets/css/app.css?v=20261029d">
+    <link rel="stylesheet" href="assets/css/app.css?v=20261030a">
 </head>
 <body>
 <?php require __DIR__ . '/index.body.php'; ?>
-    <script src="assets/js/app.js?v=20261029d"></script>
+    <script src="assets/js/app.js?v=20261030a"></script>
 </body>
 </html>

@@ -795,9 +795,57 @@
             range.addEventListener('input', syncStrength);
             strengthRow.append(strengthLabel, range);
 
+            // 微调时可重新选择画风 / 角色 LoRA：沿用主表单的可选项，默认选中原图使用的 LoRA
+            const mainLoraSelect = document.getElementById('image-lora');
+            const mainLoraWeight = document.getElementById('image-lora-weight');
+            let refineLoraSelect = null;
+            let refineLoraWeight = null;
+            let loraRow = null;
+            if (mainLoraSelect) {
+                const currentLora = (loraName && loraName !== 'none') ? loraName : 'none';
+                const currentWeight = Number(loraWeight) > 0
+                    ? Number(loraWeight)
+                    : (mainLoraWeight ? Number(mainLoraWeight.value) : 0.7);
+
+                loraRow = document.createElement('div');
+                loraRow.className = 'lora-row';
+
+                const loraField = document.createElement('div');
+                loraField.className = 'form-group';
+                const loraLabel = document.createElement('label');
+                loraLabel.textContent = '画风 / 角色 LoRA';
+                refineLoraSelect = document.createElement('select');
+                Array.from(mainLoraSelect.options).forEach(option => {
+                    const copy = new Option(option.textContent, option.value);
+                    if (option.value === currentLora) {
+                        copy.selected = true;
+                    }
+                    refineLoraSelect.add(copy);
+                });
+                loraField.append(loraLabel, refineLoraSelect);
+
+                const weightField = document.createElement('div');
+                weightField.className = 'form-group';
+                const weightLabel = document.createElement('label');
+                refineLoraWeight = document.createElement('input');
+                refineLoraWeight.type = 'range';
+                refineLoraWeight.min = '0.1';
+                refineLoraWeight.max = '1.2';
+                refineLoraWeight.step = '0.05';
+                refineLoraWeight.value = Math.max(0.1, Math.min(1.2, currentWeight)).toFixed(2);
+                const syncLoraWeight = () => {
+                    weightLabel.textContent = 'LoRA 强度：' + Number(refineLoraWeight.value).toFixed(2);
+                };
+                syncLoraWeight();
+                refineLoraWeight.addEventListener('input', syncLoraWeight);
+                weightField.append(weightLabel, refineLoraWeight);
+
+                loraRow.append(loraField, weightField);
+            }
+
             const hint = document.createElement('p');
             hint.className = 'form-hint';
-            hint.textContent = '幅度越小越接近原图（0.2~0.4 局部调整），越大重绘越明显（0.6~0.8 重新构图）';
+            hint.textContent = '幅度越小越接近原图（0.2~0.4 局部调整），越大重绘越明显（0.6~0.8 重新构图）；更换 LoRA 时建议把幅度调到 0.55 以上才能明显生效';
 
             const actions = document.createElement('div');
             actions.className = 'refine-actions';
@@ -819,14 +867,16 @@
                 button.disabled = true;
                 message.className = 'config-message';
                 message.textContent = '已提交，正在生成...';
+                const usedLora = refineLoraSelect ? refineLoraSelect.value : (loraName || 'none');
+                const usedWeight = refineLoraWeight ? refineLoraWeight.value : (loraWeight || '');
                 try {
                     const data = await apiPost({
                         action: 'refine_image',
                         source: imageUrl,
                         prompt: text,
                         strength: range.value,
-                        lora: loraName || 'none',
-                        lora_weight: loraWeight || ''
+                        lora: usedLora,
+                        lora_weight: usedWeight
                     });
                     let refinedUrl = data.image_url || '';
                     if (!refinedUrl && data.task_id) {
@@ -841,7 +891,7 @@
                     }
                     message.className = 'config-message';
                     message.textContent = '';
-                    appendImageResult(container, safeUrl, text, '✏️ 微调完成', loraName, loraWeight);
+                    appendImageResult(container, safeUrl, text, '✏️ 微调完成', usedLora, usedWeight);
                 } catch (error) {
                     message.className = 'config-message error';
                     message.textContent = error.message;
@@ -854,7 +904,11 @@
                 }
             });
 
-            refine.append(descField, strengthRow, hint, actions);
+            if (loraRow) {
+                refine.append(descField, loraRow, strengthRow, hint, actions);
+            } else {
+                refine.append(descField, strengthRow, hint, actions);
+            }
             card.append(title, document.createElement('br'), img, refine);
             container.appendChild(card);
         }

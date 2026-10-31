@@ -985,6 +985,10 @@
             accent-color: var(--primary-color);
         }
 
+        .refine-panel .form-group {
+            margin-bottom: 12px;
+        }
+
         .refine-actions {
             display: flex;
             align-items: center;

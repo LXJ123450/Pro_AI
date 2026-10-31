@@ -184,6 +184,10 @@ function handleParseExample(): void {
     if ($result['success']) {
         $send(['type' => 'done', 'content' => $result['content']]);
     } else {
+        // 本地模型缺失时给出可直接执行的修复提示，避免只看到上游 404 原文
+        if ($imageData !== '' && preg_match('/model.*(?:not found|does not exist)/i', $result['error'])) {
+            $result['error'] .= '（本地未安装识图模型，请先在命令行执行：ollama pull ' . $model . '）';
+        }
         $send(['type' => 'error', 'error' => $result['error']]);
     }
     exit;
